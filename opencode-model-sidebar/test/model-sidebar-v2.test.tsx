@@ -21,7 +21,7 @@ function model(index: number): ModelInfo {
 }
 
 async function mount(input: {
-  patched?: boolean; favorites?: number[]; switchMode?: string; rows?: number; models?: ModelInfo[]
+  patched?: boolean; favorites?: number[]; switchMode?: string; rows?: number; models?: ModelInfo[]; sidebarHeight?: number
 } = {}) {
   const setup = await createTestRenderer({ width: 60, height: 32, useThread: false })
   cleanups.push(() => { if (!setup.renderer.isDestroyed) setup.renderer.destroy() })
@@ -55,7 +55,9 @@ async function mount(input: {
   const cleanup = plugin.setup(context)
   expect(slot?.append).toBe("sidebar.content")
   if (!slot) throw new Error("missing slot")
-  await render(() => slot!.render({ sessionID }) as never, setup.renderer)
+  await render(() => input.sidebarHeight === undefined
+    ? slot!.render({ sessionID }) as never
+    : <box width={40} height={input.sidebarHeight}>{slot!.render({ sessionID }) as never}</box>, setup.renderer)
   await setup.renderOnce()
   return { setup, setCalls, switched, dispatched, layers, cleanup }
 }
@@ -73,6 +75,20 @@ test("V2 stock plugin renders all models and opens the native picker instead of 
   await setup.renderOnce()
   expect(dispatched).toEqual(["model.list"])
   expect(switched).toEqual([])
+})
+
+test("V2 constrained sidebar keeps search and model rows on separate lines", async () => {
+  const { setup, layers } = await mount({ sidebarHeight: 8 })
+  const search = line(setup, "Search models")
+  expect(search).toBe(2)
+  for (let index = 0; index < 12; index++) {
+    expect(line(setup, `Model ${String(index).padStart(2, "0")}`)).toBe(search + index + 1)
+  }
+  layers[0]!().commands?.[0]?.run()
+  setup.mockInput.typeText("0")
+  await setup.renderOnce()
+  expect(line(setup, "⌕ 0█")).toBe(search)
+  expect(line(setup, "Model 00")).toBe(search + 1)
 })
 
 test("V2 patched plugin switches on double click but never on a single click", async () => {

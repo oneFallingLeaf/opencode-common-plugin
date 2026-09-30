@@ -2,8 +2,10 @@
 
 ## V2 migration (current)
 
-The hybrid entrypoint `tui/index.ts` is exported through the package `.` and
-`./tui`. Its `tui(api)` checks `api.app.version` before dynamically importing
+The hybrid entrypoint `tui/index.ts` is exported through the package `./tui`.
+The package does not export `.`, so V2's `opencode plugin add` detects a TUI-only
+plugin rather than incorrectly registering it as a server plugin. Its
+`tui(api)` checks `api.app.version` before dynamically importing
 `tui/model-sidebar.tsx` for V1; `setup(ctx)` checks `ctx.app.version` before
 importing `tui/model-sidebar-v2.tsx` for V2. Neither implementation is loaded
 eagerly, and unknown/mismatched majors fail before importing either. Explicit

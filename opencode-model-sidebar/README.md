@@ -155,12 +155,13 @@ them; stock V2 starts in the All tab and remains usable without a patch.
 
 ## Direct switching
 
-The public V2 `@opencode/plugin/tui` context has no client-local model setter
+The public V2 `@opencode/plugin/tui` context exposes the current model and
+variant selection through `ui.model`, but has no client-local model setter
 or favorites accessor. The server's `session.switchModel` is not equivalent to
 changing the TUI model used by a typed prompt. Direct switching/favorites
 therefore require [`patches/opencode-model-api-v2.patch`](patches/opencode-model-api-v2.patch),
 which adds `context.model` to the V2 CLI plugin context. It applies cleanly to
-the pinned upstream **v2.0.14** tag (not a generic patch for all V2 releases).
+the pinned upstream **v2.0.20** tag (not a generic patch for all V2 releases).
 The `scripts/opencode-patched` wrapper uses a separate Git worktree and Bun to
 build/cache that patched version; using it is optional. Do not place the
 wrapper on PATH until you have reviewed it and have a source checkout with the
