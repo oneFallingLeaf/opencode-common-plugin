@@ -171,16 +171,18 @@ function View(props: { context: PatchedContext; sessionID: string }) {
     event.stopPropagation()
   })
 
+  // Preserve the content's natural height; the host sidebar owns scrolling.
+  // Shrinking this column can put the search text and model rows on the same line.
   return (
-    <box>
-      <box flexDirection="row" gap={1} onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
+    <box flexShrink={0} minWidth={0}>
+      <box height={1} flexDirection="row" gap={1} onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
         onMouseDown={() => setOpen((x) => !x)}>
         <text fg={theme().text.base}>{open() ? "▼" : "▶"}</text>
         <text fg={theme().text.base}><b>Models</b></text>
         <text fg={theme().text.muted}>{models().length}</text>
       </box>
       <Show when={open()}>
-        <box flexDirection="row" gap={1}>
+        <box height={1} flexDirection="row" gap={1}>
           <Show when={api.model?.favorite}>
             <text fg={tab() === "favorites" ? theme().text.base : theme().text.muted}
               onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
@@ -191,7 +193,7 @@ function View(props: { context: PatchedContext; sessionID: string }) {
             onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
             onMouseUp={() => { setTab("all"); setCursor(0); setStart(0) }}>All {models().length}</text>
         </box>
-        <box width="100%" minWidth={0} paddingLeft={1} backgroundColor={theme().background.raised.high}
+        <box height={1} width="100%" minWidth={0} paddingLeft={1} backgroundColor={theme().background.raised.high}
            onMouseOver={() => setPointer("text")} onMouseOut={() => setPointer("default")}
            onMouseDown={clickSearch}>
           <text fg={searching() ? theme().text.base : theme().text.muted} wrapMode="none" truncate>
@@ -210,7 +212,7 @@ function View(props: { context: PatchedContext; sessionID: string }) {
             const session = api.data.session.get(props.sessionID)?.model
             return session && { providerID: session.providerID, modelID: session.id }
           }
-          return <box flexDirection="row" gap={1} minWidth={0}
+          return <box height={1} flexDirection="row" gap={1} minWidth={0}
             backgroundColor={selected() === row() ? theme().background.raised.high : undefined}
             onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
             onMouseUp={() => {
