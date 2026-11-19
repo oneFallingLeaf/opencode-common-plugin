@@ -17,7 +17,7 @@ function deferred<T>() {
   return { promise, resolve }
 }
 async function harness(settings: Record<string, unknown> = {}, size = { width: 80, height: 24 }) {
-  const screen = await createTestRenderer({ ...size, useThread: false })
+  const screen = await createTestRenderer({ ...size })
   const slots = new Map<SlotPath, (input: any) => any>()
   const layers: Array<() => KeymapLayer> = []
   const listeners = new Map<string, Set<(event: any) => void>>()
@@ -26,6 +26,7 @@ async function harness(settings: Record<string, unknown> = {}, size = { width: 8
   const navigations: string[] = []
   const toasts: string[] = []
   const [route, setRoute] = createSignal<{ type: "session"; sessionID: string } | { type: "home" }>({ type: "session", sessionID: "active" })
+  const [active, setActive] = createSignal<SessionInfo | undefined>(session("active", 2))
   let list = [session("old", 1), session("active", 2)]
   let editorFocused = true
   let stops: (() => void) | void
@@ -36,7 +37,7 @@ async function harness(settings: Record<string, unknown> = {}, size = { width: 8
     renderer: screen.renderer,
     theme: { background: { raised: { base: "#111111", high: "#333333" } }, border: { base: "#aaaaaa" }, text: { base: "#ffffff", muted: "#888888", action: { primary: { base: "#00aaff" } }, feedback: { success: { base: "#00ff00" } } } },
     client: { session: { list(input: unknown) { requests.push(input); return replies.shift() ?? Promise.resolve({ data: list }) } } },
-    data: { session: { get: (id: string) => id === "active" ? session("active", 2) : list.find((s) => s.id === id), status: () => "idle" },
+    data: { session: { get: (id: string) => id === "active" ? active() : list.find((s) => s.id === id), status: () => "idle" },
       on(name: string, callback: (event: any) => void) {
         const group = listeners.get(name) ?? new Set()
         group.add(callback); listeners.set(name, group)
@@ -65,7 +66,7 @@ async function harness(settings: Record<string, unknown> = {}, size = { width: 8
   }
   return {
     screen, slots, layers, listeners, requests, navigations, toasts, ctx, editor,
-    mount, run, setRoute, setList(value: SessionInfo[]) { list = value },
+    mount, run, setRoute, setActive, setList(value: SessionInfo[]) { list = value },
     enqueue(promise: Promise<{ data: SessionInfo[] }>) { replies.push(promise) },
     emit(name: string, data: unknown = {}) { listeners.get(name)?.forEach((listener) => listener({ data })) },
     get open() { return !editorFocused }, get focused() { return editorFocused },
@@ -92,6 +93,34 @@ test("default registers left overlay, footer and palette/slash command without a
     expect(h.screen.captureCharFrame()).toContain("Session active")
     expect(h.screen.captureCharFrame()).toContain("current")
     expect(h.screen.captureCharFrame().split("\n")[0]).toMatch(/^\s{0,2}Sessions/)
+  } finally { h.dispose() }
+})
+
+test("project scope waits for the current session to sync before listing", async () => {
+  const h = await harness()
+  try {
+    h.setActive(undefined)
+    await h.mount()
+    h.run("toggle")
+    expect(h.requests).toEqual([])
+    h.setActive(session("active", 2))
+    await Promise.resolve()
+    await h.screen.renderOnce()
+    expect(h.requests).toEqual([{ limit: 50, parentID: null, project: "project" }])
+    expect(h.screen.captureCharFrame()).toContain("Session active")
+  } finally { h.dispose() }
+})
+
+test("changing sessions outside the overlay closes it and cleans up its listeners", async () => {
+  const h = await harness()
+  try {
+    await h.mount()
+    h.run("toggle")
+    expect(h.listeners.get("session.created")?.size).toBe(1)
+    h.setRoute({ type: "session", sessionID: "other" })
+    await h.screen.renderOnce()
+    expect(h.listeners.get("session.created")?.size).toBe(0)
+    expect(h.screen.captureCharFrame()).not.toContain("Sessions")
   } finally { h.dispose() }
 })
 

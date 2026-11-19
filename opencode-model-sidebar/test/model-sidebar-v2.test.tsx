@@ -5,6 +5,7 @@ import type { ModelInfo } from "@opencode/client"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { KeyEvent } from "@opentui/core"
 import { render } from "@opentui/solid"
+import { createSignal } from "solid-js"
 import plugin from "../tui/model-sidebar-v2"
 
 const sessionID = "ses_test"
@@ -22,8 +23,9 @@ function model(index: number): ModelInfo {
 
 async function mount(input: {
   patched?: boolean; favorites?: number[]; switchMode?: string; rows?: number; models?: ModelInfo[]; sidebarHeight?: number
+  sessionModel?: number
 } = {}) {
-  const setup = await createTestRenderer({ width: 60, height: 32, useThread: false })
+  const setup = await createTestRenderer({ width: 60, height: 32 })
   cleanups.push(() => { if (!setup.renderer.isDestroyed) setup.renderer.destroy() })
   const setCalls: Array<{ providerID: string; modelID: string }> = []
   const switched: Array<{ sessionID: string; model: { providerID: string; id: string } }> = []
@@ -31,13 +33,14 @@ async function mount(input: {
   const layers: Array<() => KeymapLayer> = []
   let slot: SlotClaim<"sidebar.content"> | undefined
   const models = input.models ?? Array.from({ length: 30 }, (_, i) => model(i))
+  const [promptModel, setPromptModel] = createSignal<number>()
   const context = {
     options: { maxRows: input.rows ?? 12, switchMode: input.switchMode },
     renderer: setup.renderer,
     theme: { text: { base: "#ffffff", muted: "#808080", feedback: { success: { base: "#00ff00" } } }, background: { raised: { high: "#333333" } } },
     location: undefined,
     data: {
-      session: { get: () => undefined },
+      session: { get: () => input.sessionModel === undefined ? undefined : { model: model(input.sessionModel) } },
       location: { provider: { list: () => [{ id: "acme", name: "Acme" }, { id: "opencode", name: "OpenCode" }] }, model: { list: () => models } },
     },
     model: input.patched ? {
@@ -48,6 +51,10 @@ async function mount(input: {
     client: { session: { switchModel: async (value: typeof switched[number]) => { switched.push(value) } } },
     keymap: { layer: (value: () => KeymapLayer) => { layers.push(value) }, dispatch: (id: string) => dispatched.push(id) },
     ui: {
+      model: { current: () => {
+        const selected = promptModel()
+        return selected === undefined ? undefined : { providerID: "acme", modelID: model(selected).id }
+      } },
       slot: (value: SlotClaim<"sidebar.content">) => { slot = value; return () => { slot = undefined } },
       toast: { show: () => {} },
     },
@@ -59,7 +66,7 @@ async function mount(input: {
     ? slot!.render({ sessionID }) as never
     : <box width={40} height={input.sidebarHeight}>{slot!.render({ sessionID }) as never}</box>, setup.renderer)
   await setup.renderOnce()
-  return { setup, setCalls, switched, dispatched, layers, cleanup }
+  return { setup, setCalls, switched, dispatched, layers, cleanup, setPromptModel }
 }
 
 function frame(setup: TestRendererSetup) { return setup.captureCharFrame() }
@@ -75,6 +82,22 @@ test("V2 stock plugin renders all models and opens the native picker instead of 
   await setup.renderOnce()
   expect(dispatched).toEqual(["model.list"])
   expect(switched).toEqual([])
+})
+
+test("V2 stock highlighting follows the prompt and falls back to the session model", async () => {
+  const { setup, setPromptModel } = await mount({ sessionModel: 1 })
+  const marked = (name: string) => frame(setup).split("\n")[line(setup, name)]!.includes("●")
+  expect(marked("Model 01")).toBe(true)
+  setPromptModel(3)
+  await setup.renderOnce()
+  expect(marked("Model 01")).toBe(false)
+  expect(marked("Model 03")).toBe(true)
+})
+
+test("V2 fractionally configured maxRows still shows at least one model", async () => {
+  const { setup } = await mount({ rows: 0.5 })
+  expect(frame(setup)).toContain("Model 00")
+  expect(frame(setup)).not.toContain("Model 01")
 })
 
 test("V2 constrained sidebar keeps search and model rows on separate lines", async () => {

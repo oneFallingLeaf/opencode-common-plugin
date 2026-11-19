@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
-import type { PanelInput } from "@opencode/plugin/tui/context"
+import { useTerminalDimensions } from "@opentui/solid"
 import type { SessionInfo } from "@opencode/client"
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 
 type Options = {
   enabled?: boolean
@@ -52,10 +52,11 @@ function relativeTime(updated: number) {
   return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`
 }
 
-function Sessions(props: { panel: PanelInput; settings: Settings }) {
+function Sessions(props: { sessionID: string; settings: Settings; close: () => void }) {
   const ctx = usePlugin()
+  const dimensions = useTerminalDimensions()
   const [sessions, setSessions] = createSignal<SessionInfo[]>([])
-  const [selected, setSelected] = createSignal<string>()
+  const [selected, setSelected] = createSignal<string | undefined>(props.sessionID)
   const [query, setQuery] = createSignal("")
   const [statuses, setStatuses] = createSignal<Record<string, "running" | "retrying" | undefined>>({})
   let request = 0
@@ -74,7 +75,7 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
       seen.add(session.id)
       result.push({ session, category, status: status(session) })
     }
-    const current = list.find((session) => session.id === props.panel.sessionID)
+    const current = list.find((session) => session.id === props.sessionID)
     if (current) add(current, "Current")
     for (const session of list) if (status(session)) add(session, "Running")
     for (const session of list) add(session, dayLabel(session.time.updated))
@@ -85,17 +86,21 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
     if (!items().some((item) => item.session.id === selected())) setSelected(items()[0]?.session.id)
   }
   const edit = (text: string) => { setQuery(text); reconcile() }
+  const project = createMemo(() => props.settings.scope === "project"
+    ? ctx.data.session.get(props.sessionID)?.projectID
+    : undefined)
   const refresh = async () => {
     const generation = ++request
+    const projectID = project()
+    // Wait for the host cache instead of issuing an unscoped list request.
+    if (props.settings.scope === "project" && !projectID) return
     try {
-      const project = ctx.data.session.get(props.panel.sessionID)?.projectID
       const response = await ctx.client.session.list({
         limit: props.settings.limit, parentID: null,
-        ...(props.settings.scope === "project" && project ? { project } : {}),
+        ...(projectID ? { project: projectID } : {}),
       })
       if (disposed || generation !== request) return
-      // Do not show another project's sessions if the current session has not yet synced.
-      setSessions(props.settings.scope === "project" && !project ? response.data.filter((item) => item.projectID === ctx.data.session.get(props.panel.sessionID)?.projectID) : response.data)
+      setSessions(response.data)
       reconcile()
     } catch {
       if (!disposed && generation === request) ctx.ui.toast.show({ variant: "error", message: "Unable to load sessions" })
@@ -105,11 +110,15 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => { timer = undefined; void refresh() }, 100)
   }
-  const close = () => props.panel.close()
+  createEffect(on(project, () => {
+    setSessions([])
+    void refresh()
+  }))
+  const close = () => props.close()
   const switchTo = (id: string) => {
     if (!items().some((item) => item.session.id === id)) return
-    if (id !== props.panel.sessionID) ctx.ui.router.navigate({ type: "session", sessionID: id })
     close()
+    if (id !== props.sessionID) ctx.ui.router.navigate({ type: "session", sessionID: id })
   }
   const step = (direction: number) => {
     const list = items()
@@ -118,7 +127,6 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
     setSelected(list[index < 0 ? 0 : (index + direction + list.length) % list.length]!.session.id)
   }
   ctx.keymap.layer(() => ({
-    enabled: props.panel.focused,
     priority: 30,
     commands: [
       { id: commands.close, bind: props.settings.closeKey, run: close },
@@ -131,17 +139,13 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
     ],
   }))
   const onKey = (event: import("@opentui/core").KeyEvent) => {
-    if (!props.panel.focused || event.eventType === "release" || event.ctrl || event.meta || event.option || event.super || event.hyper ||
+    if (event.eventType === "release" || event.ctrl || event.meta || event.option || event.super || event.hyper ||
       event.defaultPrevented || event.propagationStopped ||
       (event.name !== "space" && [...event.name].length !== 1) || [...event.sequence].length !== 1 || /\p{C}/u.test(event.sequence)) return
     event.preventDefault()
     edit(query() + event.sequence)
   }
-  onMount(() => {
-    setSelected(props.panel.sessionID)
-    void refresh()
-    ctx.renderer.keyInput.on("keypress", onKey)
-  })
+  onMount(() => ctx.renderer.keyInput.on("keypress", onKey))
   const off = [
     ctx.data.on("session.created", schedule),
     ctx.data.on("session.renamed", schedule),
@@ -159,10 +163,10 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
     off.forEach((stop) => stop())
     ctx.renderer.keyInput.off("keypress", onKey)
   })
-  const width = () => props.panel.width
+  const width = () => Math.min(36, Math.max(4, dimensions().width - 2))
   const compact = () => width() < 12
-  const searchBox = () => width() >= 30 && ctx.renderer.height >= 12
-  const rows = () => Math.max(1, Math.floor((ctx.renderer.height - 7 - (searchBox() ? 2 : 0)) / 3))
+  const searchBox = () => width() >= 30 && dimensions().height >= 12
+  const rows = () => Math.max(1, Math.floor((dimensions().height - 7 - (searchBox() ? 2 : 0)) / 3))
   const window = () => {
     const list = items()
     const index = Math.max(0, list.findIndex((item) => item.session.id === selected()))
@@ -189,7 +193,7 @@ function Sessions(props: { panel: PanelInput; settings: Settings }) {
       onMouseDown={() => setSelected(item.session.id)} onMouseUp={() => switchTo(item.session.id)}>
       <text fg={theme.text.muted} wrapMode="none">{item.category}</text>
       <text fg={item.session.id === selected() ? theme.text.action.primary.base : theme.text.base} wrapMode="none">{item.session.id === selected() ? "▸ " : "  "}{item.session.title ?? "Untitled"}</text>
-      <text fg={item.status ? theme.text.feedback.success.base : theme.text.muted} wrapMode="none">{item.session.id === props.panel.sessionID ? "current · " : ""}{item.status ?? ""}{item.status ? " · " : ""}{relativeTime(item.session.time.updated)}</text>
+      <text fg={item.status ? theme.text.feedback.success.base : theme.text.muted} wrapMode="none">{item.session.id === props.sessionID ? "current · " : ""}{item.status ?? ""}{item.status ? " · " : ""}{relativeTime(item.session.time.updated)}</text>
     </box>}</For>
     <text fg={theme.text.muted} flexShrink={0}>{window().more > 0 ? `↓ ${window().more} more` : " "}</text>
     <text fg={theme.text.muted} wrapMode="none">{items().length === 0 ? query() && sessions().length ? "No matches" : "No sessions" : " "}</text>
@@ -201,47 +205,40 @@ export default Plugin.define({
   setup(ctx) {
     const settings = options(ctx.options)
     if (!settings.enabled) return
-    const [open, setOpen] = createSignal(false)
-    let editor: { plainText?: string; blur(): void; focus(): void; isDestroyed?: boolean } | undefined
+    const [openSession, setOpenSession] = createSignal<string>()
+    let editor: typeof ctx.renderer.currentFocusedEditor = null
     const route = () => ctx.ui.router.current()
     const close = (restore = true) => {
-      setOpen(false)
+      setOpenSession(undefined)
       const previous = editor
-      editor = undefined
+      editor = null
       if (restore && previous && !previous.isDestroyed && !ctx.renderer.isDestroyed) previous.focus()
     }
     const toggle = () => {
-      if (open()) return close()
-      if (route().type !== "session") return
-      editor = ctx.renderer.currentFocusedEditor as typeof editor
+      if (openSession()) return close()
+      const current = route()
+      if (current.type !== "session") return
+      editor = ctx.renderer.currentFocusedEditor
       editor?.blur()
-      setOpen(true)
+      setOpenSession(current.sessionID)
     }
     const stops = [
       ctx.ui.slot({ append: "prompt.footer.status", render: () => <Show when={route().type === "session"}><text fg={ctx.theme.text.action.primary.base} onMouseUp={toggle}>[Sessions]</text></Show> }),
       ctx.ui.slot({ append: "app", render: () => {
-        createEffect(() => { if (open() && route().type !== "session") close(false) })
+        const visibleSession = () => {
+          const current = route()
+          return current.type === "session" && current.sessionID === openSession() ? current.sessionID : undefined
+        }
+        createEffect(() => { if (openSession() && !visibleSession()) close(false) })
         ctx.keymap.layer(() => ({ mode: "global", commands: [{ id: commands.toggle, title: "Toggle sessions panel", group: "Session", palette: true,
           slash: { name: "sessions-panel" }, run: toggle }] }))
         if (settings.openKey) ctx.keymap.layer(() => ({ mode: "global", priority: 10, enabled: () =>
-          route().type === "session" && !open() &&
+          route().type === "session" && !openSession() &&
           (!settings.requireEmptyPrompt || ctx.renderer.currentFocusedEditor?.plainText === ""),
           commands: [{ bind: settings.openKey, run: toggle }],
         }))
-        return <Show when={open() && route().type === "session"}>
-          {(() => {
-            const panel: PanelInput = {
-              name,
-              get sessionID() { const current = route(); return current.type === "session" ? current.sessionID : "" },
-              get width() { return Math.min(36, Math.max(4, ctx.renderer.width - 2)) },
-              presentation: "panel",
-              get focused() { return open() },
-              focus: () => {},
-              close: () => close(),
-              toggleFullscreen: () => {},
-            }
-            return <Sessions panel={panel} settings={settings} />
-          })()}
+        return <Show when={visibleSession()} keyed>
+          {(sessionID) => <Sessions sessionID={sessionID} settings={settings} close={close} />}
         </Show>
       } }),
     ]

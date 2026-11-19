@@ -24,7 +24,7 @@
  *   showQuota      fetch and display subscription quota (default true)
  *                 OpenAI V2 quota requires the companion server plugin.
  */
-import type { SessionMessageInfo } from "@opencode/client"
+import type { LocationRef, SessionMessageInfo } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
@@ -239,9 +239,9 @@ function modelProvider(api: Context, sessionID: string): QuotaProvider | null {
 }
 
 // A V2 connection must use server-side RPC; local legacy tokens may belong to another account.
-async function connectionState(api: Context, provider: QuotaProvider): Promise<"connected" | "legacy" | "unknown"> {
+async function connectionState(api: Context, provider: QuotaProvider, location: LocationRef | undefined): Promise<"connected" | "legacy" | "unknown"> {
   try {
-    const integration = await api.client.integration.get({ integrationID: provider, location: api.location })
+    const integration = await api.client.integration.get({ integrationID: provider, location })
     return integration.data.connections.length === 0 ? "legacy" : "connected"
   } catch {
     return "unknown"
@@ -350,17 +350,18 @@ function View(props: { api: Context; sessionID: string; options: Resolved }) {
     setV2Quota(false)
     setV2Unavailable(false)
     if (!provider) return
+    const location = props.api.data.session.get(props.sessionID)?.location ?? props.api.location
     const controller = new AbortController()
     let cancelled = false
     let handle: ReturnType<typeof setTimeout> | undefined
     const poll = async () => {
-      const connection = await connectionState(props.api, provider)
+      const connection = await connectionState(props.api, provider, location)
       if (cancelled) return
       if (connection === "connected" && provider === "openai") {
         let windows: QuotaWindow[] = []
         try {
           const result = await props.api.client.rpc(TokenUsageQuota).openai({}, {
-            location: props.api.location,
+            location,
             signal: controller.signal,
           })
           const candidate = (result as { windows?: unknown }).windows
@@ -409,7 +410,7 @@ function View(props: { api: Context; sessionID: string; options: Resolved }) {
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
   return (
-    <box flexDirection="column">
+    <box flexDirection="column" flexShrink={0} minWidth={0}>
       <box flexDirection="row" gap={1} onMouseDown={() => setOpen((value) => !value)}>
          <text fg={theme().text.base}>{open() ? "▼" : "▶"}</text>
          <text fg={theme().text.base}>

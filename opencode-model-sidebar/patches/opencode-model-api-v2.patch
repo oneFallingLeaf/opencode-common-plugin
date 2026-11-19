@@ -1,7 +1,8 @@
 diff --git a/packages/plugin/src/tui/context.ts b/packages/plugin/src/tui/context.ts
+index fe641b39d5..9249ff01d6 100644
 --- a/packages/plugin/src/tui/context.ts
 +++ b/packages/plugin/src/tui/context.ts
-@@ -516,6 +516,14 @@ export interface Context {
+@@ -545,6 +545,14 @@ export interface Context {
    readonly options: Readonly<Record<string, any>>
    readonly location: LocationRef | undefined
    readonly app: App
@@ -17,9 +18,10 @@ diff --git a/packages/plugin/src/tui/context.ts b/packages/plugin/src/tui/contex
    readonly client: OpenCodeClient
    readonly data: Data
 diff --git a/packages/tui/src/plugin/api.tsx b/packages/tui/src/plugin/api.tsx
+index c79b86a37a..4cc972c5bd 100644
 --- a/packages/tui/src/plugin/api.tsx
 +++ b/packages/tui/src/plugin/api.tsx
-@@ -139,6 +139,13 @@ export function createPluginContext(input: {
+@@ -173,6 +173,13 @@ export function createPluginContext(input: {
        return host.location.current
      },
      app: { version: host.app.version, channel: host.app.channel },

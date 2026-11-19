@@ -60,7 +60,7 @@ async function mount(options?: {
   providers?: Provider[]
   favorites?: Array<{ providerID: string; modelID: string }>
 }): Promise<Harness> {
-  const setup = await createTestRenderer({ width: 60, height: 30, useThread: false })
+  const setup = await createTestRenderer({ width: 60, height: 30 })
   cleanups.push(() => {
     if (!setup.renderer.isDestroyed) setup.renderer.destroy()
   })

@@ -6,14 +6,16 @@ README.
 
 | Plugin                                                 | What it does                                                                            | Docs                                                |
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| [opencode-session-sidebar](opencode-session-sidebar/) | Session browsing contribution for OpenCode's host-owned session panel.                    | [README](opencode-session-sidebar/README.md)       |
-| [opencode-model-sidebar](opencode-model-sidebar/)       | Searchable model list in the session sidebar, with one-click switching on patched builds. | [README](opencode-model-sidebar/README.md)          |
+| [opencode-session-sidebar](opencode-session-sidebar/) | Searchable sessions in a left-edge overlay.                    | [README](opencode-session-sidebar/README.md)       |
+| [opencode-model-sidebar](opencode-model-sidebar/)       | Searchable model list in the session sidebar, with direct switching on patched builds. | [README](opencode-model-sidebar/README.md)          |
 | [opencode-token-usage](opencode-token-usage/)           | Live per-session token usage, plus ChatGPT/Codex and OpenCode Go subscription quota.      | [README](opencode-token-usage/README.md)            |
 
 ## Requirements
 
-- OpenCode V1 or V2. The TUI plugin APIs differ: V1 uses `tui.json`, while V2
-  loads CLI-only plugins from the global `cli.json`.
+- OpenCode **V2 v2.3.2** is the tested V2 release. OpenCode **V1 v1.18.29+**
+  uses the legacy entrypoints. V1 reads `tui.json`; V2 reads global `cli.json`.
+- Package versions in this checkout: model sidebar **0.1.4**, session sidebar
+  **0.3.0**, token usage **0.1.1**. These version bumps do not publish to npm.
 - [Bun](https://bun.sh) for development and tests. The plugins run inside
   OpenCode.
 
@@ -60,9 +62,8 @@ installation and configuration details. For the V2 configuration model, see
 
 ### opencode-session-sidebar
 
-Contributes session browsing to OpenCode's host-owned session panel. See the
-[plugin README](opencode-session-sidebar/README.md) for its current behavior and
-configuration; panel presentation is owned by the host.
+Browse and switch sessions in a searchable left-edge overlay. See the
+[plugin README](opencode-session-sidebar/README.md) for shortcuts and configuration.
 
 ### opencode-model-sidebar
 
@@ -76,8 +77,9 @@ for its current options and patch instructions.
 
 A live **Usage** section in the session sidebar: requests, input/output tokens,
 cache and reasoning tokens, optional cost, and subscription quota for the current
-provider when usable local quota credentials exist (ChatGPT/Codex for OpenAI
-models, OpenCode Go for `opencode-go` models).
+provider (ChatGPT/Codex for OpenAI models, OpenCode Go for `opencode-go` models).
+On V2 the optional quota server plugin can use the active OpenAI account; legacy
+credentials are a separate source.
 Quota windows show a bar, percentage, and time to reset. Options include
 `startCollapsed`, `showCost`, `showCache`, `showReasoning`, `showQuota`, and
 `enabled`.
@@ -107,8 +109,7 @@ checkout, register the V1 implementations using absolute file paths (and use
 
 Run `bun install` in each package you enable. V1 and V2 have distinct TUI
 implementations and configuration files; use the per-plugin README for options
-and package entrypoints. Version `0.2.0` of the session package is prepared but
-has not been published to npm.
+and package entrypoints.
 
 ## Repository layout
 
@@ -121,11 +122,11 @@ has not been published to npm.
 
 ## Development
 
-Most plugins use Bun for tests and type checking:
+Each plugin uses Bun for tests and type checking:
 
 ```sh
-cd opencode-model-sidebar   # or opencode-token-usage
-bun install
+cd opencode-model-sidebar   # or either of the other plugin directories
+bun install --frozen-lockfile
 bun test
 bun run typecheck
 ```

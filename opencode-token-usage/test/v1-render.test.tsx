@@ -49,7 +49,7 @@ async function mountV1(input: { provider?: string; promptProvider?: string; quot
     auth_mode: "chatgpt",
     tokens: { access_token: "synthetic-v1-token", account_id: "synthetic-account" },
   }))
-  const setup = await createTestRenderer({ width: 60, height: 30, useThread: false })
+  const setup = await createTestRenderer({ width: 60, height: 30 })
   cleanups.push(() => { if (!setup.renderer.isDestroyed) setup.renderer.destroy() })
   const requests: Array<{ url: string; init?: RequestInit }> = []
   globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
