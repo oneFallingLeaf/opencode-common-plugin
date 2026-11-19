@@ -43,7 +43,7 @@ test("hybrid entry dispatches to V2 and returns its cleanup", async () => {
     ui: { slot(input: { append: string }) { claims.push(input.append); return () => released.push(input.append) } },
   } as unknown as Parameters<typeof plugin.setup>[0]
   const cleanup = await plugin.setup(ctx)
-  expect(claims).toEqual(["prompt.footer.status", "app"])
+  expect(claims).toEqual(["home.footer.status", "prompt.footer.status", "app"])
   cleanup?.()
   expect(released).toEqual(claims)
 })
