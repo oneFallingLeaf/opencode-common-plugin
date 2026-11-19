@@ -4,9 +4,10 @@
     {
       "package": "/absolute/path/to/custom-plugin/opencode-session-sidebar",
       "options": {
+        "openKey": "left",
         "closeKey": "right",
         "requireEmptyPrompt": true,
-        "scope": "project",
+        "scope": "folder",
         "limit": 50,
         "showStatus": true
       }

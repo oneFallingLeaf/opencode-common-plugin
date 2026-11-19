@@ -15,7 +15,7 @@ README.
 - OpenCode **V2 v2.3.2** is the tested V2 release. OpenCode **V1 v1.18.29+**
   uses the legacy entrypoints. V1 reads `tui.json`; V2 reads global `cli.json`.
 - Package versions in this checkout: model sidebar **0.1.4**, session sidebar
-  **0.3.0**, token usage **0.1.1**. These version bumps do not publish to npm.
+  **0.4.0**, token usage **0.1.1**. These version bumps do not publish to npm.
 - [Bun](https://bun.sh) for development and tests. The plugins run inside
   OpenCode.
 
@@ -62,8 +62,10 @@ installation and configuration details. For the V2 configuration model, see
 
 ### opencode-session-sidebar
 
-Browse and switch sessions in a searchable left-edge overlay. See the
-[plugin README](opencode-session-sidebar/README.md) for shortcuts and configuration.
+Browse and switch sessions from Home or an open session in a searchable left-edge
+overlay. On V2, press **Tab** in the sidebar to switch between the local view and
+all sessions. See the [plugin README](opencode-session-sidebar/README.md) for
+shortcuts and configuration.
 
 ### opencode-model-sidebar
 

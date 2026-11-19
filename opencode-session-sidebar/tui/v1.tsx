@@ -6,8 +6,9 @@
  */
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import type { Session } from "@opencode-ai/sdk/v2"
-import { useTerminalDimensions } from "@opentui/solid"
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js"
+import { batch, createEffect, createRoot, createSignal, Show } from "solid-js"
+import { createSessionList } from "./session-list"
+import { SessionRail } from "./session-rail"
 
 type Options = {
   enabled?: boolean
@@ -29,7 +30,6 @@ type Resolved = {
 }
 
 type Editor = { plainText?: string; blur: () => void; focus: () => void; isDestroyed?: boolean }
-type Item = { session: Session; category: string; status?: "running" | "retrying" }
 
 const command = {
   toggle: "session.panel.toggle",
@@ -63,164 +63,30 @@ function currentID(api: TuiPluginApi): string | undefined {
   return typeof params?.sessionID === "string" ? params.sessionID : undefined
 }
 
-function dayLabel(updated: number): string {
-  const date = new Date(updated)
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return "Today"
-  if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
-  return date.toDateString()
-}
-
-function relativeTime(updated: number): string {
-  const minutes = Math.max(0, Math.floor((Date.now() - updated) / 60_000))
-  if (minutes < 1) return "now"
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`
-}
-
-function Rail(props: {
-  api: TuiPluginApi
-  items: () => Item[]
-  query: () => string
-  hasSessions: () => boolean
-  selected: () => string | undefined
-  select: (id: string) => void
-  switchTo: (id: string) => void
-  close: () => void
-}) {
-  const dimensions = useTerminalDimensions()
-  const theme = () => props.api.theme.current
-  const [statusVersion, setStatusVersion] = createSignal(0)
-  const unsubscribe = props.api.event.on("session.status", () => setStatusVersion((value) => value + 1))
-  onCleanup(unsubscribe)
-  const items = () => {
-    statusVersion()
-    return props.items()
-  }
-  const width = () => Math.min(36, Math.max(4, dimensions().width - 2))
-  const compact = () => width() < 12
-  // Keep the original one-line search at small sizes so the selected row fits.
-  const searchBox = () => width() >= 30 && dimensions().height >= 12
-  // Each entry uses three terminal lines (category, title, status).
-  const rows = () => Math.max(1, Math.floor((dimensions().height - 7 - (searchBox() ? 2 : 0)) / 3))
-  const window = () => {
-    const list = items()
-    const index = Math.max(0, list.findIndex((item) => item.session.id === props.selected()))
-    const start = Math.min(Math.max(0, index - Math.floor(rows() / 2)), Math.max(0, list.length - rows()))
-    return { items: list.slice(start, start + rows()), start, more: list.length - start - rows() }
-  }
-
-  return (
-    <box
-      position="absolute"
-      top={0}
-      bottom={0}
-      left={0}
-      width={width()}
-      zIndex={1500}
-      flexDirection="column"
-      paddingLeft={1}
-      paddingRight={1}
-      backgroundColor={theme().backgroundPanel}
-      border={["right"]}
-      borderColor={theme().border}
-    >
-      <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <text fg={theme().text} wrapMode="none">{compact() ? "S" : "Sessions"}</text>
-        <text fg={theme().textMuted} onMouseUp={props.close}>×</text>
-      </box>
-      <Show when={searchBox()} fallback={
-        <text fg={theme().accent} flexShrink={0} wrapMode="none">{compact() ? "/" : "Search: "}{props.query() || (compact() ? "" : "type to filter")}</text>
-      }>
-        <box height={3} flexShrink={0} border borderStyle="heavy" borderColor={theme().accent} backgroundColor={theme().backgroundElement} paddingLeft={1} paddingRight={1}>
-          <text fg={theme().text} wrapMode="none"><b>Search: {props.query() || "type to filter"}</b></text>
-        </box>
-      </Show>
-      <Show when={width() >= 20} fallback={null}>
-        <text fg={theme().textMuted} flexShrink={0} wrapMode="none">↑↓ · Enter · Esc</text>
-      </Show>
-      <text fg={theme().textMuted} flexShrink={0}>{window().start > 0 ? `↑ ${window().start} more` : " "}</text>
-      <For each={window().items}>
-        {(item) => {
-          const active = () => item.session.id === props.selected()
-          const current = () => item.session.id === currentID(props.api)
-          return (
-            <box
-              flexDirection="column"
-              flexShrink={0}
-              backgroundColor={active() ? theme().backgroundElement : theme().backgroundPanel}
-              onMouseDown={() => props.select(item.session.id)}
-              onMouseUp={() => props.switchTo(item.session.id)}
-            >
-              <text fg={theme().textMuted} wrapMode="none">{item.category}</text>
-              <text fg={active() ? theme().accent : theme().text} wrapMode="none">
-                {active() ? "▸ " : "  "}{item.session.title}
-              </text>
-              <text fg={item.status ? theme().success : theme().textMuted} wrapMode="none">
-                {current() ? "current · " : ""}{item.status ?? ""}{item.status ? " · " : ""}{relativeTime(item.session.time.updated)}
-              </text>
-            </box>
-          )
-        }}
-      </For>
-      <text fg={theme().textMuted} flexShrink={0}>{window().more > 0 ? `↓ ${window().more} more` : " "}</text>
-      <text fg={theme().textMuted} wrapMode="none">{items().length === 0 ? props.query() && props.hasSessions() ? "No matches" : "No sessions" : " "}</text>
-    </box>
-  )
-}
-
 const tui: TuiPlugin = async (api, options) => {
   const input = resolve(options as Options | undefined)
   if ((options as Options | undefined)?.enabled === false) return
 
   const [open, setOpen] = createSignal(false)
   const [sessions, setSessions] = createSignal<Session[]>([])
-  const [selected, setSelected] = createSignal<string>()
-  const [query, setQuery] = createSignal("")
+  const [loading, setLoading] = createSignal(false)
   const [revision, setRevision] = createSignal(0)
   let editor: Editor | undefined
   let request = 0
   let disposed = false
+  let statusQueued = false
   let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
   const validRoute = () => api.route.current.name === "home" || api.route.current.name === "session"
-  const items = (): Item[] => {
-    revision() // Session statuses and route state change independently of the list response.
-    const id = currentID(api)
-    const list = [...sessions()].sort((a, b) => b.time.updated - a.time.updated)
-    const seen = new Set<string>()
-    const result: Item[] = []
-    const status = (session: Session): Item["status"] => {
+  const { list, dispose: disposeList } = createRoot((dispose) => ({
+    dispose,
+    list: createSessionList(sessions, () => currentID(api), (id) => {
       if (!input.showStatus) return
-      const value = api.state.session.status(session.id)?.type
+      revision()
+      const value = api.state.session.status(id)?.type
       return value === "retry" ? "retrying" : value === "busy" ? "running" : undefined
-    }
-    const add = (session: Session, category: string) => {
-      if (session.parentID || seen.has(session.id)) return
-      seen.add(session.id)
-      result.push({ session, category, status: status(session) })
-    }
-    if (id) {
-      const current = list.find((session) => session.id === id)
-      if (current) add(current, "Current")
-    }
-    for (const session of list) if (status(session)) add(session, "Running")
-    for (const session of list) add(session, dayLabel(session.time.updated))
-    const needle = query().toLocaleLowerCase()
-    return needle ? result.filter((item) => item.session.title.toLocaleLowerCase().includes(needle)) : result
-  }
-
-  const reconcileSelection = () => {
-    const list = items()
-    if (!list.some((item) => item.session.id === selected())) setSelected(list[0]?.session.id)
-  }
-  const editQuery = (value: string) => {
-    setQuery(value)
-    reconcileSelection()
-  }
+    }),
+  }))
 
   const refresh = async () => {
     const generation = ++request
@@ -233,11 +99,14 @@ const tui: TuiPlugin = async (api, options) => {
         : api.client.session.list({ roots: true, limit: input.limit, scope: "project" }))
       if (disposed || !open() || generation !== request) return
       if (response.error) throw response.error
-      setSessions(response.data ?? [])
-      setRevision((value) => value + 1)
-      reconcileSelection()
+      batch(() => {
+        setSessions(response.data ?? [])
+        list.reconcile()
+      })
     } catch {
       if (!disposed && open() && generation === request) api.ui.toast({ variant: "error", message: "Unable to load sessions" })
+    } finally {
+      if (!disposed && open() && generation === request) setLoading(false)
     }
   }
 
@@ -273,24 +142,20 @@ const tui: TuiPlugin = async (api, options) => {
     if (!validRoute() || api.ui.dialog.open) return
     editor = api.renderer.currentFocusedEditor as Editor | null ?? undefined
     editor?.blur()
-    setQuery("")
-    setSelected(currentID(api) ?? items()[0]?.session.id)
-    setOpen(true)
+    batch(() => {
+      if (input.showStatus) setRevision((value) => value + 1)
+      list.reset()
+      setLoading(true)
+      setOpen(true)
+    })
     void refresh()
   }
 
   const switchTo = (id: string) => {
-    if (!items().some((item) => item.session.id === id)) return
+    if (!list.has(id)) return
     const same = id === currentID(api)
     if (!same) api.route.navigate("session", { sessionID: id })
     close(same)
-  }
-
-  const step = (direction: number) => {
-    const list = items()
-    if (!list.length) return
-    const index = list.findIndex((item) => item.session.id === selected())
-    setSelected(list[index < 0 ? 0 : (index + direction + list.length) % list.length].session.id)
   }
 
   // The rail is not an editor: only take plain printable characters while it
@@ -302,7 +167,7 @@ const tui: TuiPlugin = async (api, options) => {
       key.defaultPrevented || key.propagationStopped) return
     if ((key.name !== "space" && [...key.name].length !== 1) || [...key.sequence].length !== 1 || /\p{C}/u.test(key.sequence)) return
     key.preventDefault()
-    editQuery(query() + key.sequence)
+    list.edit(list.query() + key.sequence)
   }
   api.renderer.keyInput.on("keypress", onKey)
 
@@ -318,7 +183,14 @@ const tui: TuiPlugin = async (api, options) => {
         })
         return (
           <Show when={open() && validRoute()} fallback={null}>
-            <Rail api={api} items={items} query={query} hasSessions={() => sessions().length > 0} selected={selected} select={setSelected} switchTo={switchTo} close={() => close()} />
+            <SessionRail
+              list={list}
+              palette={{
+                panel: api.theme.current.backgroundPanel, raised: api.theme.current.backgroundElement,
+                border: api.theme.current.border, text: api.theme.current.text, muted: api.theme.current.textMuted,
+                accent: api.theme.current.accent, running: api.theme.current.success, retrying: api.theme.current.warning,
+              }}
+              loading={loading()} switchTo={switchTo} close={() => close()} />
           </Show>
         )
       },
@@ -347,11 +219,11 @@ const tui: TuiPlugin = async (api, options) => {
     enabled: () => open() && validRoute() && !api.ui.dialog.open && !api.renderer.currentFocusedEditor,
     commands: [
       { name: command.close, title: "Close sessions panel", run: () => close() },
-      { name: command.next, title: "Next session", run: () => step(1) },
-      { name: command.previous, title: "Previous session", run: () => step(-1) },
-      { name: command.select, title: "Switch session", run: () => { const id = selected(); if (id) switchTo(id) } },
-      { name: command.backspace, title: "Erase search character", run: () => editQuery([...query()].slice(0, -1).join("")) },
-      { name: command.clear, title: "Clear session search", run: () => editQuery("") },
+      { name: command.next, title: "Next session", run: () => list.step(1) },
+      { name: command.previous, title: "Previous session", run: () => list.step(-1) },
+      { name: command.select, title: "Switch session", run: () => { const id = list.selected(); if (id) switchTo(id) } },
+      { name: command.backspace, title: "Erase search character", run: () => list.edit([...list.query()].slice(0, -1).join("")) },
+      { name: command.clear, title: "Clear session search", run: () => list.edit("") },
     ],
     bindings: [
       { key: input.closeKey, cmd: command.close },
@@ -368,7 +240,14 @@ const tui: TuiPlugin = async (api, options) => {
     api.event.on("session.created", scheduleRefresh),
     api.event.on("session.updated", scheduleRefresh),
     api.event.on("session.deleted", scheduleRefresh),
-    api.event.on("session.status", () => queueMicrotask(() => { if (!disposed) setRevision((value) => value + 1) })),
+    ...(input.showStatus ? [api.event.on("session.status", () => {
+      if (!open() || statusQueued) return
+      statusQueued = true
+      queueMicrotask(() => {
+        statusQueued = false
+        if (!disposed && open()) setRevision((value) => value + 1)
+      })
+    })] : []),
   ]
   // A click on the uncovered prompt gives its editor focus. Close the rail
   // without refocusing the previously captured editor or stealing that click.
@@ -382,6 +261,7 @@ const tui: TuiPlugin = async (api, options) => {
     api.renderer.off("focused_editor", onEditorFocus)
     api.renderer.keyInput.off("keypress", onKey)
     close(!api.renderer.isDestroyed)
+    disposeList()
   })
 }
 
