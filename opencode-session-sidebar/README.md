@@ -1,6 +1,6 @@
-# opencode-session-sidebar 0.2.1
+# opencode-session-sidebar 0.3.0
 
-A sessions plugin for both OpenCode V1 and [OpenCode V2](https://opencode.ai/v2/docs/build/plugins/cli). The package root and `./tui` resolve to the same hybrid entry: it checks the host's app version and loads only the matching implementation. The root export makes the package discoverable by the CLI; it is not a server plugin. `./v1` and `./v2` are also available as explicit exports; do not load a version-specific entry in the other host.
+A sessions plugin for OpenCode V1 (1.18.29+) and [OpenCode V2](https://opencode.ai/v2/docs/build/plugins/cli), tested on V2 **2.3.2**. The `./tui` entry loads only the matching implementation. Starting in 0.3.0 there is no package root export: V2 treats a root export as a server plugin. If you previously imported the root directly, use `opencode-session-sidebar/tui`. `./v1` and `./v2` remain available as explicit exports.
 
 ## OpenCode V1
 
@@ -41,12 +41,11 @@ to your checkout:
 
 OpenCode loads the package's `./tui` export automatically. This configuration is local to the CLI and works when connected to a remote OpenCode server. Use `cli.json` for V2 and `tui.json` for V1; do not put this CLI-only plugin in server `opencode.json`. There is no project-local V2 `cli.json`. Restart the CLI after installation. See [CLI plugin installation](https://opencode.ai/v2/docs/cli/plugins).
 
-For an npm installation, replace the checkout path with
-`"opencode-session-sidebar@0.2.1"`. Alternatively, install it manually with
-`npm install --prefix ~/.config/opencode opencode-session-sidebar@0.2.1` (use
-`$XDG_CONFIG_HOME/opencode` as the prefix if set) and use
-`./node_modules/opencode-session-sidebar` as the package entry. Do not point
-the CLI at the individual `.tsx` file; the package exposes `./tui`.
+Use the checkout instructions above for 0.3.0 until it is published. After
+publication, `opencode plugin add opencode-session-sidebar@0.3.0` will add it
+to `cli.json` as a TUI-only plugin. With the currently published 0.2.1 package,
+add `"opencode-session-sidebar@0.2.1"` to `cli.json` manually; its old root
+export makes `plugin add` register it as a server plugin.
 
 ## V2 configuration
 
@@ -78,10 +77,10 @@ Pass options with the V2 object form (also in [`examples/cli.json`](examples/cli
 | `showStatus` | `true` | Mark running/retrying sessions and group them before older sessions. |
 | `enabled` | `true` | Disable this plugin without removing its configuration. |
 
-Search only filters the fetched session titles, not message contents or sessions beyond `limit`. If the project identity is not yet available in the local session cache, the project view may be empty until reopening the panel.
+Search only filters the fetched session titles, not message contents or sessions beyond `limit`. If the project identity is not yet available in the local session cache, the project view waits for the cache to sync before listing sessions.
 
 To opt into the former arrow shortcut, add `"openKey": "left"` to this plugin's `options`. This registers a global keymap layer while in a session with the overlay closed; with the default `requireEmptyPrompt: true`, it is active only when the prompt is empty. **Tradeoff:** it may override V2's `session.child.previous` on `left` in that context. Choose another key after checking your [V2 keybindings](https://opencode.ai/v2/docs/cli/keybinds), or leave `openKey` unset to retain built-in navigation. Setting `openKey` to an empty string also leaves it unbound.
 
 ## Development
 
-Run `bun install`, `bun test`, `bun run typecheck`, and `npm pack --dry-run` from this directory. V1 requires the keymap-backed TUI API (`@opencode-ai/plugin` >= 1.18.0) and OpenTUI >= 0.4.5. V2 requires OpenTUI >= 0.5.10. GPL-2.0-only; see [LICENSE](LICENSE).
+Run `bun install`, `bun test`, `bun run typecheck`, and `npm pack --dry-run` from this directory. The V2 test suite uses the OpenCode 2.3.2 SDK and OpenTUI 0.8.4. GPL-2.0-only; see [LICENSE](LICENSE).

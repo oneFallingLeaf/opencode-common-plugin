@@ -17,9 +17,11 @@ below remains for `tui/model-sidebar.tsx`, which V2 does not load. V2 uses
 `context.keymap.layer`; its rendered regressions live in
 `test/model-sidebar-v2.test.tsx`.
 
-Stock V2 does not expose the TUI-local model or favorites to CLI plugins.
-When the optional `patches/opencode-model-api-v2.patch` is installed at the
-pinned v2.0.12 tag, `context.model.set/current/favorite` provide direct model
+Stock V2 exposes the current prompt model through `context.ui.model.current`,
+but not a local model setter or favorites. The current marker prefers patched
+`context.model.current`, then the public prompt selection, then the session's
+server-side model. When the optional `patches/opencode-model-api-v2.patch` is
+installed at the pinned v2.3.2 tag, `context.model.set/current/favorite` provide direct model
 selection and favorites. Without it the default choice dispatches the native
 `model.list` picker (never a misleading session-only change). The explicit
 `switchMode: "session"` option calls `client.session.switchModel` instead;

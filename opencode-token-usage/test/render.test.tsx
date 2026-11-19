@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import type { Context } from "@opencode/plugin/tui/context"
-import type { SessionMessageAssistant, SessionMessageInfo } from "@opencode/client"
+import type { LocationRef, SessionMessageAssistant, SessionMessageInfo } from "@opencode/client"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { render } from "@opentui/solid"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
@@ -91,6 +91,8 @@ type Harness = {
   requests: CapturedRequest[]
   fetchCalls: string[]
   integrationCalls: string[]
+  integrationLocations: Array<LocationRef | undefined>
+  rpcLocations: Array<LocationRef | undefined>
   rpcCalls: number
   registered: boolean
   slotActive: () => boolean
@@ -114,6 +116,9 @@ type MountOptions = {
   integrationError?: boolean
   rpcQuota?: { windows: Array<{ percent: number; resetsAt: number; label: string }> }
   rpcError?: boolean
+  location?: LocationRef
+  sessionLocation?: LocationRef
+  sidebarHeight?: number
   width?: number
   height?: number
   hybrid?: boolean
@@ -123,7 +128,6 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
   const setup = await createTestRenderer({
     width: h.width ?? 60,
     height: h.height ?? 30,
-    useThread: false,
   })
   cleanups.push(() => {
     if (!setup.renderer.isDestroyed) setup.renderer.destroy()
@@ -173,6 +177,8 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
   // before the first request is issued.
   const fetchCalls: string[] = []
   const integrationCalls: string[] = []
+  const integrationLocations: Array<LocationRef | undefined> = []
+  const rpcLocations: Array<LocationRef | undefined> = []
   let rpcCalls = 0
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -188,16 +194,19 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
   let slot: Slot | undefined
   let unregister = () => {}
   const api = {
-    app: { version: "2.0.15" },
+    app: { version: "2.3.2" },
+    location: h.location,
     client: {
-      rpc: () => ({ openai: async () => {
+      rpc: () => ({ openai: async (_input: unknown, options: { location?: LocationRef }) => {
         rpcCalls++
+        rpcLocations.push(options.location)
         if (h.rpcError || !h.rpcQuota) throw new Error("quota RPC unavailable")
         return h.rpcQuota
       } }),
       integration: {
-        get: async ({ integrationID }: { integrationID: string }) => {
+        get: async ({ integrationID, location }: { integrationID: string; location?: LocationRef }) => {
           integrationCalls.push(integrationID)
+          integrationLocations.push(location)
           if (h.integrationError) throw new Error("integration unavailable")
           return { data: { connections: h.v2Connections?.[integrationID] ?? [] } }
         },
@@ -222,7 +231,7 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
           : messages() },
         get: () => {
           const value = provider()
-          return value ? { model: { providerID: value, id: "test-model" } } : undefined
+          return value ? { model: { providerID: value, id: "test-model" }, location: h.sessionLocation } : undefined
         },
       },
     },
@@ -242,7 +251,9 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
   const registered = slot !== undefined
   if (slot) {
     const registeredSlot = slot
-    await render(() => registeredSlot({ sessionID: SESSION }) as never, setup.renderer)
+    await render(() => h.sidebarHeight === undefined
+      ? registeredSlot({ sessionID: SESSION }) as never
+      : <box width={40} height={h.sidebarHeight}>{registeredSlot({ sessionID: SESSION }) as never}</box>, setup.renderer)
     await setup.renderOnce()
   }
   return {
@@ -250,6 +261,8 @@ async function mount(h: MountOptions = {}): Promise<Harness> {
     requests,
     fetchCalls,
     integrationCalls,
+    integrationLocations,
+    rpcLocations,
     get rpcCalls() { return rpcCalls },
     registered,
     slotActive: () => slot !== undefined,
@@ -370,6 +383,21 @@ test("active OpenAI V2 connection displays server quota without sending a local 
   expect(h.requests).toHaveLength(0)
 })
 
+test.each([
+  ["the session workspace", { directory: "/worktree", workspaceID: "wrk_test" } as LocationRef],
+  ["the CLI location when the session location is missing", undefined],
+] as const)("V2 looks up and requests active quota in %s", async (_name, sessionLocation) => {
+  const location = { directory: "/project" } as LocationRef
+  const h = await mount({
+    provider: "openai", location, sessionLocation,
+    v2Connections: { openai: [{ type: "credential", id: "v2", label: "active", method: "oauth" }] },
+    rpcQuota: { windows: [{ percent: 48, resetsAt: Date.now() + 3_600_000, label: "5h" }] },
+  })
+  expect(await waitForFrameText(h.setup, "OpenAI · active account")).toContain("48%")
+  expect(h.integrationLocations).toEqual([sessionLocation ?? location])
+  expect(h.rpcLocations).toEqual([sessionLocation ?? location])
+})
+
 test("hybrid V2 setup renders cached totals and refuses a connected account's legacy token", async () => {
   const h = await mount({
     hybrid: true,
@@ -461,6 +489,16 @@ test("renders session totals, cache and reasoning from assistant messages", asyn
   expect(screen).toContain("Cache 900K↓ 60K↑")
   expect(screen).toContain("Think 45K")
   expect(screen).not.toContain("$")
+})
+
+test("V2 usage preserves separate rows in a height-constrained sidebar", async () => {
+  const { setup } = await mount({
+    sidebarHeight: 2,
+    options: { showCost: true },
+    messages: [assistant({ input: 10, output: 5, cacheRead: 3, reasoning: 2, cost: 0.25 })],
+  })
+  expect(["Usage", "In 10", "Cache 3", "Think 2", "$0.25"].map((text) => lineY(setup, text)))
+    .toEqual([0, 1, 2, 3, 4])
 })
 
 test("startCollapsed hides totals until the header is clicked", async () => {

@@ -1,4 +1,4 @@
-# opencode-token-usage
+# opencode-token-usage 0.1.1
 
 An OpenCode [V1](https://opencode.ai/v2/docs/build/plugins/migrate-v1) / [V2](https://opencode.ai/v2/docs/build/plugins/cli) TUI plugin that adds a **live per-session
 token usage section to the session sidebar**, and shows subscription quota for
@@ -30,7 +30,7 @@ Weekly  ▓░░░░░ 12% · 2d 6h
 
 ### OpenCode V2 (global CLI configuration)
 
-Add the CLI plugin to the global `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
+This checkout is tested on V2 **2.3.2**. Add the CLI plugin to the global `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
 
    ```json
    {
@@ -100,7 +100,8 @@ In V2, quota appears under the token totals when the current model's provider is
 `openai` or `opencode-go`. For an OpenAI V2 connection, the CLI asks the companion
 server plugin for quota for the **active OAuth account**; the credential and
 authenticated request remain on the connected server (also when using a remote
-server). Without that plugin, or when a V2 request fails, the UI shows
+server). The CLI uses the session worktree or workspace for both connection
+lookup and quota requests. Without that plugin, or when a V2 request fails, the UI shows
 `Quota unavailable for V2 sign-in`. The same status appears for OpenCode Go V2
 connections and for failed connection-metadata lookups. The CLI does not use a
 possibly unrelated local legacy token when a V2 connection is reported.

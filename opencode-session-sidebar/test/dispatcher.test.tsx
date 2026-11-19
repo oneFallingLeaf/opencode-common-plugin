@@ -70,9 +70,11 @@ test("hybrid entry and implementations have no eager cross-version runtime impor
   expect(v2).not.toContain('from "@opencode-ai/')
 })
 
-test("package root and ./tui resolve to the same hybrid entrypoint for host discovery", async () => {
+test("package exports only TUI entrypoints so plugin add uses cli.json", async () => {
   const manifest = await Bun.file(new URL("../package.json", import.meta.url)).json()
-  expect(manifest.exports["."]).toBe("./tui/index.ts")
-  expect(manifest.exports["./tui"]).toBe(manifest.exports["."])
-  expect(Object.keys(manifest.exports)).toEqual([".", "./tui", "./v1", "./v2"])
+  expect(manifest.exports).toEqual({
+    "./tui": "./tui/index.ts",
+    "./v1": "./tui/v1.tsx",
+    "./v2": "./tui/v2.tsx",
+  })
 })

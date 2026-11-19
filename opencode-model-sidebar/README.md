@@ -1,4 +1,4 @@
-# opencode-model-sidebar
+# opencode-model-sidebar 0.1.4
 
 An [OpenCode](https://opencode.ai) TUI plugin that puts a **searchable model list
 in the session sidebar**. On V2 it appends to the `sidebar.content` slot in
@@ -19,8 +19,8 @@ only to the legacy V1 plugin.
 - Tabs for your native OpenCode favorites and the full model list.
 - Fuzzy-ish search box: type to filter by model name, provider, or model id.
 - Keyboard and mouse driven.
-- Current model highlighted from the TUI selection on a patched host; stock
-  V2 can only show the session's server-side model when available.
+- The current prompt model is marked on stock and patched V2. If no prompt
+  selection is available, the marker falls back to the server session model.
 - Selecting a model switches it: double-click its row, or press `enter`. A
   single click only highlights the row.
 - On a patched OpenCode build switching is direct (see
@@ -31,9 +31,9 @@ only to the legacy V1 plugin.
 
 ### OpenCode V2
 
-The same package supports V1 (1.18.29+) and V2 (2.0.12+). Its `./tui`
-entrypoint selects the implementation for the host; `./v1` and `./v2` are
-available for direct imports. Install the package with:
+This checkout is tested on V2 **2.3.2** and retains V1 support (1.18.29+).
+Its `./tui` entrypoint selects the implementation for the host; `./v1` and
+`./v2` are available for direct imports. To install a published version, use:
 
 ```sh
 opencode plugin add opencode-model-sidebar
@@ -51,7 +51,8 @@ the plugin manually to `cli.json`:
 }
 ```
 
-For a local checkout, use the absolute path shown in
+To use 0.1.4 from this checkout, run `bun install --frozen-lockfile` here and
+use the absolute path shown in
 [`examples/cli.json`](examples/cli.json). `opencode plugin add` accepts npm or
 Git package specifiers, not a local directory path.
 
@@ -161,7 +162,7 @@ or favorites accessor. The server's `session.switchModel` is not equivalent to
 changing the TUI model used by a typed prompt. Direct switching/favorites
 therefore require [`patches/opencode-model-api-v2.patch`](patches/opencode-model-api-v2.patch),
 which adds `context.model` to the V2 CLI plugin context. It applies cleanly to
-the pinned upstream **v2.0.20** tag (not a generic patch for all V2 releases).
+the pinned upstream **v2.3.2** tag (not a generic patch for all V2 releases).
 The `scripts/opencode-patched` wrapper uses a separate Git worktree and Bun to
 build/cache that patched version; using it is optional. Do not place the
 wrapper on PATH until you have reviewed it and have a source checkout with the

@@ -8,7 +8,7 @@ type Item = ModelInfo & { providerName: string; free: boolean }
 type ModelRef = { providerID: string; modelID: string }
 type PatchedContext = Plugin.Context & {
   model?: {
-    current(): { providerID: string; modelID: string } | undefined
+    current(): ModelRef | undefined
     set(model: ModelRef, options?: { recent?: boolean }): void
     favorite(): readonly ModelRef[]
   }
@@ -24,7 +24,7 @@ function View(props: { context: PatchedContext; sessionID: string }) {
   const [cursor, setCursor] = createSignal(0)
   const [start, setStart] = createSignal(0)
   const maxRows = typeof api.options.maxRows === "number" && Number.isFinite(api.options.maxRows) && api.options.maxRows > 0
-    ? Math.floor(api.options.maxRows) : 12
+    ? Math.max(1, Math.floor(api.options.maxRows)) : 12
   const last = { id: "", at: 0 }
   let restore: { focus(): void; isDestroyed?: boolean } | undefined
   let pointer: "default" | "pointer" | "text" | undefined
@@ -35,7 +35,14 @@ function View(props: { context: PatchedContext; sessionID: string }) {
     if (!api.renderer.isDestroyed) api.renderer.setMousePointer(style)
   }
 
-  const location = () => api.data.session.get(props.sessionID)?.location ?? api.location
+  const session = () => api.data.session.get(props.sessionID)
+  const location = () => session()?.location ?? api.location
+  const current = createMemo<ModelRef | undefined>(() => {
+    const local = api.model?.current?.() ?? api.ui.model?.current()
+    if (local) return local
+    const server = session()?.model
+    return server && { providerID: server.providerID, modelID: server.id }
+  })
   const models = createMemo(() => {
     const providers = new Map((api.data.location.provider.list(location()) ?? []).map((p) => [p.id, p.name]))
     return (api.data.location.model.list(location()) ?? [])
@@ -206,12 +213,7 @@ function View(props: { context: PatchedContext; sessionID: string }) {
         </Show>
         <For each={visible()}>{(item, index) => {
           const row = () => offset() + index()
-          const current = () => {
-            const local = api.model?.current?.()
-            if (local) return local
-            const session = api.data.session.get(props.sessionID)?.model
-            return session && { providerID: session.providerID, modelID: session.id }
-          }
+          const isCurrent = () => current()?.providerID === item.providerID && current()?.modelID === item.id
           return <box height={1} flexDirection="row" gap={1} minWidth={0}
             backgroundColor={selected() === row() ? theme().background.raised.high : undefined}
             onMouseOver={() => setPointer("pointer")} onMouseOut={() => setPointer("default")}
@@ -228,7 +230,7 @@ function View(props: { context: PatchedContext; sessionID: string }) {
               }
             }}>
             <text fg={theme().text.feedback.success.base}>
-              {current()?.providerID === item.providerID && current()?.modelID === item.id ? "●" : " "}
+              {isCurrent() ? "●" : " "}
             </text>
             <text fg={selected() === row() ? theme().text.base : theme().text.muted}
               wrapMode="none" truncate flexShrink={1}>{item.name}</text>
